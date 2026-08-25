@@ -1,0 +1,174 @@
+__docformat__ = 'restructuredtext'
+
+__all__ = ["VTKViewer"]
+
+from fipy.viewers.viewer import AbstractViewer
+from fipy.tests.doctestPlus import register_skipper
+
+def _checkForTVTK():
+    hasTVTK = True
+    try:
+        try:
+            from tvtk.api import tvtk
+        except ImportError as e:
+            from enthought.tvtk.api import tvtk
+
+        # With Python 2.7 end-of-life, bitrot has set in.  While tvtk is
+        # available from conda-forge, it can raise an exception when it
+        # internally does this import.
+        from collections.abc import Sequence
+    except Exception:
+        hasTVTK = False
+    return hasTVTK
+
+def _checkForPyVista():
+    hasPyVista = True
+    try:
+        import pyvista
+    except Exception:
+        hasPyVista = False
+    return hasPyVista
+
+register_skipper(flag="TVTK",
+                 test=_checkForTVTK,
+                 why="the `tvtk` package cannot be imported")
+
+register_skipper(flag="PYVISTA",
+                 test=_checkForPyVista,
+                 why="the `pyvista` package cannot be imported")
+
+class VTKViewer(AbstractViewer):
+    """Renders :class:`~fipy.variables.meshVariable.MeshVariable` data in VTK format
+    """
+    def __init__(self, vars, title=None, limits={}, **kwlimits):
+        """Creates a `VTKViewer`
+
+        Parameters
+        ----------
+        vars : ~fipy.variables.cellVariable.CellVariable or ~fipy.variables.faceVariable.FaceVariable or list
+            the :class:`~fipy.variables.meshVariable.MeshVariable` objects to display.
+        title : str, optional
+            displayed at the top of the `Viewer` window
+        limits : dict, optional
+            a (deprecated) alternative to limit keyword arguments
+        xmin, xmax, ymin, ymax, zmin, zmax, datamin, datamax : float, optional
+            displayed range of data. Any limit set to
+            a (default) value of `None` will autoscale.
+        """
+        kwlimits.update(limits)
+        AbstractViewer.__init__(self, vars=vars, title=title, **kwlimits)
+
+        mesh = self.vars[0].mesh
+
+        self.dataset = self._makeDataSet(mesh)
+
+        data = self._data
+
+        for var in self.vars:
+            name, rank, value = self._nameRankValue(var)
+
+            i = data.add_array(value)
+            data.get_array(i).name = name
+
+            if rank == 0:
+                data.set_active_scalars(name)
+            elif rank == 1:
+                data.set_active_vectors(name)
+            else:
+                data.set_active_tensors(name)
+
+    def _makeDataSet(self, mesh):
+        pass
+
+    @staticmethod
+    def _nameRankValue(var):
+        name = var.name or "%s #%d" % (var.__class__.__name__, id(var))
+        rank = var.rank
+        value = var.mesh._toVTK3D(var.value, rank=rank)
+
+        return (name, rank, value)
+
+    def _prepareVTK(self):
+        data = self._data
+
+        from fipy.tools import numerix
+
+        for var in self.vars:
+            name, rank, value = self._nameRankValue(var)
+
+            if not (numerix.array(value.shape) == 0).any():
+                data.get_array(name).to_array()[:] = value
+
+    def plot(self, filename=None):
+        self._prepareVTK()
+        try:
+            from tvtk.misc import write_data
+        except ImportError as e:
+            from enthought.tvtk.misc import write_data
+        write_data(self.dataset, filename)
+
+    def raw(self):
+        """
+        Returns a VTK object, which can be passed to a visualizer of choice. In
+        the example below, we pass this to the popular visualization library
+        [`pyvista`](https://docs.pyvista.org/index.html).
+
+        >>> from fipy import Grid3D, CellVariable
+        >>> from fipy import VTKViewer # doctest: +TVTK
+        >>> import pyvista as pv # doctest: +PYVISTA
+
+        >>> mesh = Grid3D(dx=1, dy=1, dz=1, nx=10, ny=10, nz=10)
+        >>> var = CellVariable(mesh)
+        >>> var.setValue(1, where=mesh.cellCenters[0] > 5)
+        >>> var.setValue(2, where=mesh.cellCenters[0] <= 5)
+        >>> viewer = VTKViewer(vars=var) # doctest: +TVTK
+
+        >>> vtk = viewer.raw() # doctest: +PYVISTA, +TVTK
+        >>> pv.wrap(vtk).plot() # doctest: +PYVISTA, +INTERACTIVE
+        >>> viewer._promptForOpinion() # doctest: +TVTK, +INTERACTIVE
+        """
+        self._prepareVTK()
+        from tvtk.api import tvtk
+        return tvtk.to_vtk(self.dataset)
+
+    def _getSuitableVars(self, vars):
+        if type(vars) not in [type([]), type(())]:
+            vars = [vars]
+        cls = self._variableClass
+        vars = [var for var in vars if isinstance(var, cls)]
+        if len(vars) == 0:
+            raise TypeError("%s can only display %s" % (self.__class__.__name__, cls.__name__))
+        vars = [var for var in vars if var.mesh==vars[0].mesh]
+        return vars
+
+    def _test(self):
+        """
+        >>> from fipy import *
+        >>> m = Grid3D(nx=2, ny=1, nz=1)
+        >>> #     m = Grid3D(nx=3, ny=4, nz=5)
+        >>> x, y, z = m.cellCenters
+        >>> v1 = CellVariable(mesh=m, value=x*y*z, name="x*y*z")
+        >>> v2 = CellVariable(mesh=m, value=x*y*y, name="x*y*y")
+
+        >>> v3 = v1.grad
+        >>> v3.name = "v1.grad"
+        >>> v4 = v1.faceGrad
+        >>> v4.name = "v1.faceGrad"
+        >>> v5 = v1.harmonicFaceValue
+        >>> v5.name = "v1.harmonicFaceValue"
+        >>> v6 = v1.arithmeticFaceValue
+        >>> v6.name = "v1.arithmeticFaceValue"
+
+        >>> #     vw = VTKViewer(vars=(v1, v2))
+        >>> #     vw = VTKViewer(vars=(v1, v2, v3)) #, v4, v5, v6))
+        >>> vw = VTKViewer(vars=(v4, v5, v6)) # doctest: +TVTK
+
+        >>> # vw.plot(filename="face.vtk")
+        """
+
+def _test():
+    import fipy.tests.doctestPlus
+    return fipy.tests.doctestPlus.testmod()
+
+if __name__ == "__main__":
+    _test()

@@ -1,0 +1,82 @@
+__docformat__ = 'restructuredtext'
+
+__all__ = []
+
+from fipy.variables.gaussCellGradVariable import _GaussCellGradVariable
+from fipy.tools import inline
+from fipy.tools import numerix
+
+class _ModCellGradVariable(_GaussCellGradVariable):
+    def __init__(self, var, modIn, modPy):
+        _GaussCellGradVariable.__init__(self, var)
+        self.modIn = modIn
+        self.modPy = modPy
+
+
+    def _calcValueInline(self, N, M, ids, orientations, volumes):
+        val = self._array.copy()
+
+        inline._runIterateElementInline(self.modIn + """
+            ITEM(val, i, vec) = 0.;
+
+            int k;
+            for (k = 0; k < M; k++) {
+                int id = ITEM(ids, i, &k);
+                ITEM(val, i, vec) += ITEM(orientations, i, &k) * ITEM(areaProj, id, vec) * ITEM(faceValues, id, NULL);
+            }
+
+            ITEM(val, i, vec) = mod(ITEM(val, i, vec) * ITEM(avgFaceSize, i, vec)) / ITEM(avgFaceSize, i, vec);
+            ITEM(val, i, vec) /= ITEM(volumes, i, NULL);
+        """, val = val,
+            ids = numerix.array(ids),
+            orientations = numerix.array(orientations),
+            volumes = numerix.array(volumes),
+            areaProj = numerix.array(self.mesh._areaProjections),
+            faceValues = numerix.array(self.var.arithmeticFaceValue),
+            M = M,
+            ni = N,
+            avgFaceSize = self.mesh._averageFaceSizePerCell,
+            shape=numerix.array(numerix.shape(val)))
+
+        return self._makeValue(value = val)
+
+    def _gradAreaPerCell(self, N, M, ids, orientations, volumes):
+        gradArea = super(_ModCellGradVariable, self)._gradAreaPerCell(N, M, ids, orientations, volumes)
+        avgFaceSize = self.mesh._averageFaceSizePerCell
+        return self.modPy(gradArea / avgFaceSize) * avgFaceSize
+
+    def _test(self):
+        r"""
+        >>> import fipy as fp
+        >>> from fipy.tools.numerix import pi
+
+        >>> oneDMesh = fp.Grid1D(nx=3)
+
+        Confirm that `_ModCellGradVariable` calculates as expected
+
+        >>> modVar = fp.ModularVariable(mesh=oneDMesh,
+        ...                             value=[pi/4, -3 * pi / 4, 3 * pi / 4])
+        >>> print(numerix.allclose(modVar.grad,
+        ...                        [-pi/2, -3*pi/4, -pi/4]))
+        True
+
+        Confirm that `_GaussCellGradVariable` calculates as expected
+        
+        >>> nomodVar = fp.CellVariable(mesh=oneDMesh,
+        ...                            value=[pi/4, -3 * pi / 4, 3 * pi / 4])
+        >>> print(numerix.allclose(nomodVar.grad,
+        ...                        [-pi/2, pi/4, 3*pi/4]))
+        True
+
+        Confirm that grids with different mesh spacings build correctly
+        
+        >>> threeDMesh = fp.Grid3D(dx=[0.1, 0.2, 0.15], dy=0.1, dz=0.2, ny=5, nz=10)
+        """
+        pass
+
+def _test():
+    import fipy.tests.doctestPlus
+    return fipy.tests.doctestPlus.testmod()
+
+if __name__ == "__main__":
+    _test()
