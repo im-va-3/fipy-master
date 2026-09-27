@@ -569,6 +569,8 @@ class Solver(object):
         ...                    <= iter_upper),
         ...                   error < enorm]
         ...         satisfied[criterion] = all(checks)
+        >>> if not all(satisfied.values()):
+        ...     raise AssertionError(satisfied)
         >>> print(all(satisfied.values()))
         True
         """
