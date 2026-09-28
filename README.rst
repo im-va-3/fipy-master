@@ -69,3 +69,44 @@ electrodeposition process.
 .. |Binder|        image:: https://mybinder.org/badge.svg
 .. _Binder:        https://mybinder.org/v2/gh/usnistgov/fipy/master?filepath=examples%2Findex.ipynb
 
+
+
+Step-by-step usage guide
+========================
+
+1. **Install FiPy.** Create a Python environment. From this checkout, run::
+
+       python -m pip install .
+
+   Follow the installation guide at
+   https://pages.nist.gov/fipy/en/latest/INSTALLATION.html for optional
+   solvers and plotting dependencies.
+2. **Run a first example.** Open the example index at
+   examples/index.ipynb in Jupyter and run the diffusion example from
+   beginning to end. Keep the mesh, initial condition, and time step small.
+3. **Describe the mesh and unknowns.** Select a 1D/2D/3D mesh, create a
+   CellVariable (and a FaceVariable when needed), specify initial values and
+   boundary conditions, then write the equation as FiPy terms.
+4. **Solve and inspect.** Combine transient, diffusion, convection, and
+   source terms; solve for the desired number of time steps; inspect or plot
+   the variable after each step. Check convergence and boundary behavior.
+5. **Build a coupled model.** Create one equation per unknown, share variables
+   between equations, and solve the coupled system. Start from a matching
+   phase-field or transport example before adding constitutive terms.
+
+Functionality map
+-----------------
+
+* Finite-volume meshes and cell/face variables for one-, two-, and
+  three-dimensional problems.
+* Transient, diffusion, convection, and source terms for elliptic,
+  hyperbolic, and parabolic PDEs, including coupled equations.
+* Boundary conditions, sparse linear solvers, visualization, and application
+  examples for phase transformations, electrochemical systems, wetting,
+  photovoltaics, and level-set electrodeposition.
+* Follow the local docs/ and examples/ trees or the user guide at
+  https://pages.nist.gov/fipy/en/latest/USAGE.html, examples at
+  https://pages.nist.gov/fipy/en/stable/EXAMPLES.html, and the FAQ at
+  https://pages.nist.gov/fipy/en/latest/FAQ.html for the full equation,
+  mesh, solver, and plotting references.
+
